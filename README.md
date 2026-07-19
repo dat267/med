@@ -34,14 +34,56 @@ Download a prebuilt binary for your platform from the [latest release](https://g
 | `med-windows-amd64.exe` | Windows x86_64 |
 | `med-windows-arm64.exe` | Windows ARM64 |
 
-Example (Linux x86_64):
+Then install to a user-level location (no `sudo` or admin required):
+
+#### Linux
 
 ```sh
 curl -L -o med https://github.com/dat267/med/releases/latest/download/med-linux-amd64
 chmod +x med
-sudo mv med /usr/local/bin/med
-med --help
+mkdir -p "$HOME/.local/bin"
+mv med "$HOME/.local/bin/med"
+hash -r  # forget the old cached command lookup
+med --version
 ```
+
+`$HOME/.local/bin` is on `$PATH` for most Linux distributions. If `med` is not found, add it to your shell startup file (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### macOS
+
+```sh
+curl -L -o med https://github.com/dat267/med/releases/latest/download/med-darwin-arm64
+chmod +x med
+mkdir -p "$HOME/.local/bin"
+mv med "$HOME/.local/bin/med"
+hash -r  # forget the old cached command lookup
+med --version
+```
+
+`$HOME/.local/bin` is **not** on `$PATH` by default on macOS. Add it to your shell startup file (`~/.zshrc` on modern macOS, `~/.bash_profile` on older):
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then open a new shell (or `source ~/.zshrc`) for the change to take effect.
+
+#### Windows (PowerShell)
+
+```powershell
+Invoke-WebRequest -OutFile med.exe https://github.com/dat267/med/releases/latest/download/med-windows-amd64.exe
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\bin"
+Move-Item -Path .\med.exe -Destination "$env:USERPROFILE\bin\med.exe"
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\bin", "User")
+$env:Path = "$env:USERPROFILE\bin;$env:Path"  # update current shell
+med --version
+```
+
+Open a new PowerShell window after the first run so the persistent `Path` change is picked up. (Use `med-windows-arm64.exe` on Windows on ARM.)
 
 ### From source
 
@@ -53,11 +95,13 @@ bun run build         # produces ./bin/med
 ./bin/med --help
 ```
 
-To install the built binary somewhere on your `$PATH`:
+To install the built binary to the same user-level location used above:
 
 ```sh
 bun run build
-sudo mv ./bin/med /usr/local/bin/med
+mkdir -p "$HOME/.local/bin"  # or %USERPROFILE%\bin on Windows
+mv ./bin/med "$HOME/.local/bin/med"
+med --version
 ```
 
 ---
