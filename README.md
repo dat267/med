@@ -23,7 +23,7 @@ It is designed to be completely reusable, allowing developers to add new subcomm
 
 ### From a release (recommended)
 
-Download a prebuilt binary for your platform from the [latest release](https://github.com/dat267/med/releases/latest). Available assets:
+Download a prebuilt binary for your platform from the [latest release](https://github.com/dat267/med/releases/latest), then install it to a user-level location (no `sudo` or admin required). Available assets:
 
 | Asset | Platform |
 | :--- | :--- |
@@ -34,20 +34,13 @@ Download a prebuilt binary for your platform from the [latest release](https://g
 | `med-windows-amd64.exe` | Windows x86_64 |
 | `med-windows-arm64.exe` | Windows ARM64 |
 
-Then install to a user-level location (no `sudo` or admin required):
-
 #### Linux
 
 ```sh
-curl -L -o med https://github.com/dat267/med/releases/latest/download/med-linux-amd64
-chmod +x med
-mkdir -p "$HOME/.local/bin"
-mv med "$HOME/.local/bin/med"
-rehash     # forget the old cached command lookup (bash and zsh)
-med --version
+mkdir -p ~/.local/bin && curl -L -o ~/.local/bin/med https://github.com/dat267/med/releases/latest/download/med-linux-amd64 && chmod +x ~/.local/bin/med
 ```
 
-`$HOME/.local/bin` is on `$PATH` for most Linux distributions. If `med` is not found, add it to your shell startup file (`~/.bashrc`, `~/.zshrc`, etc.):
+`~/.local/bin` is on `$PATH` for most Linux distributions. If `med` is not found after opening a new shell, add it to your shell startup file (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -56,52 +49,41 @@ export PATH="$HOME/.local/bin:$PATH"
 #### macOS
 
 ```sh
-curl -L -o med https://github.com/dat267/med/releases/latest/download/med-darwin-arm64
-chmod +x med
-mkdir -p "$HOME/.local/bin"
-mv med "$HOME/.local/bin/med"
-rehash     # forget the old cached command lookup (bash and zsh)
-med --version
+mkdir -p ~/.local/bin && curl -L -o ~/.local/bin/med https://github.com/dat267/med/releases/latest/download/med-darwin-arm64 && chmod +x ~/.local/bin/med
 ```
 
-`$HOME/.local/bin` is **not** on `$PATH` by default on macOS. Add it to your shell startup file (`~/.zshrc` on modern macOS, `~/.bash_profile` on older):
+`~/.local/bin` is **not** on `$PATH` by default on macOS. Add it to your shell startup file (`~/.zshrc` on modern macOS, `~/.bash_profile` on older) and open a new shell:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Then open a new shell (or `source ~/.zshrc`) for the change to take effect.
-
 #### Windows (PowerShell)
 
 ```powershell
-Invoke-WebRequest -OutFile med.exe https://github.com/dat267/med/releases/latest/download/med-windows-amd64.exe
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\bin"
-Move-Item -Path .\med.exe -Destination "$env:USERPROFILE\bin\med.exe"
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\bin", "User")
-$env:Path = "$env:USERPROFILE\bin;$env:Path"  # update current shell
-med --version
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\bin"; Invoke-WebRequest -OutFile "$env:USERPROFILE\bin\med.exe" https://github.com/dat267/med/releases/latest/download/med-windows-amd64.exe
 ```
 
-Open a new PowerShell window after the first run so the persistent `Path` change is picked up. (Use `med-windows-arm64.exe` on Windows on ARM.)
+`%USERPROFILE%\bin` is **not** on `$PATH` by default on Windows. Add it persistently and refresh the current shell:
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\bin", "User"); $env:Path = "$env:USERPROFILE\bin;$env:Path"
+```
+
+Open a new PowerShell window after the first install so the persistent `Path` change is picked up. (Use `med-windows-arm64.exe` on Windows on ARM.)
 
 ### From source
 
 ```sh
-git clone https://github.com/dat267/med.git
-cd med
-bun install
-bun run build         # produces ./bin/med
-./bin/med --help
+git clone https://github.com/dat267/med.git && cd med && bun install && bun run build
 ```
 
 To install the built binary to the same user-level location used above:
 
 ```sh
-bun run build
-mkdir -p "$HOME/.local/bin"  # or %USERPROFILE%\bin on Windows
-mv ./bin/med "$HOME/.local/bin/med"
-med --version
+mkdir -p ~/.local/bin && mv ./bin/med ~/.local/bin/med    # Linux / macOS
+# or on Windows PowerShell:
+# New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\bin"; Move-Item -Path .\bin\med.exe -Destination "$env:USERPROFILE\bin\med.exe"
 ```
 
 ---
