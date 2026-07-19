@@ -22,8 +22,6 @@ jobs:
       matrix:
         goos:   [linux, darwin, windows]
         goarch: [amd64, arm64]
-        include:
-          - { goos: linux, goarch: arm }
 
     steps:
       - uses: actions/checkout@v7
@@ -42,7 +40,6 @@ jobs:
           case "${{ matrix.goos }}-${{ matrix.goarch }}" in
             linux-amd64)    TARGET=bun-linux-x64 ;;
             linux-arm64)    TARGET=bun-linux-aarch64 ;;
-            linux-arm)      TARGET=bun-linux-arm ;;
             darwin-amd64)   TARGET=bun-darwin-x64 ;;
             darwin-arm64)   TARGET=bun-darwin-aarch64 ;;
             windows-amd64)  TARGET=bun-windows-x64 ;;
