@@ -11,7 +11,54 @@ It is designed to be completely reusable, allowing developers to add new subcomm
 - **Root Command Cleanliness**: Config options are only exposed on subcommands that explicitly define them, preventing global option pollution on the root `--help` output.
 - **Collision-Free Path Mapping**: Subcommand flags whose kebab-case name matches a flat global configuration key automatically inherit the full configuration hierarchy; non-matching flags stay local.
 - **Vanilla TypeScript Type Safety**: `Config` is a plain TypeScript interface; defaults are static values; values flow through a typed resolver.
-- **Cross-Platform Single Binary**: A GitHub Actions release workflow cross-compiles Bun standalone binaries for `linux/darwin/windows` across `amd64/arm64` plus `linux/arm`.
+- **Cross-Platform Single Binary**: A GitHub Actions release workflow cross-compiles Bun standalone binaries for `linux/darwin/windows` across `amd64/arm64`.
+
+---
+
+## Prerequisites
+
+[Bun](https://bun.com) `>=1.2` is required to build from source or run tests. Released binaries are self-contained and do not need Bun installed.
+
+## Install
+
+### From a release (recommended)
+
+Download a prebuilt binary for your platform from the [latest release](https://github.com/dat267/med/releases/latest). Available assets:
+
+| Asset | Platform |
+| :--- | :--- |
+| `med-linux-amd64` | Linux x86_64 |
+| `med-linux-arm64` | Linux ARM64 (Graviton, Raspberry Pi 4+, etc.) |
+| `med-darwin-amd64` | macOS x86_64 (Intel) |
+| `med-darwin-arm64` | macOS ARM64 (Apple Silicon) |
+| `med-windows-amd64.exe` | Windows x86_64 |
+| `med-windows-arm64.exe` | Windows ARM64 |
+
+Example (Linux x86_64):
+
+```sh
+curl -L -o med https://github.com/dat267/med/releases/latest/download/med-linux-amd64
+chmod +x med
+sudo mv med /usr/local/bin/med
+med --help
+```
+
+### From source
+
+```sh
+git clone https://github.com/dat267/med.git
+cd med
+bun install
+bun run build         # produces ./bin/med
+./bin/med --help
+```
+
+To install the built binary somewhere on your `$PATH`:
+
+```sh
+bun run build
+sudo mv ./bin/med /usr/local/bin/med
+```
 
 ---
 
@@ -118,15 +165,14 @@ To ensure configuration integrity, the framework enforces unique leaf-level path
 
 ---
 
-## Build & Run
+## Quick Start
 
 ```sh
-bun install
-bun run build      # produces ./bin/med
-./bin/med --help
-./bin/med greet --core-timeout 5m Alice
-./bin/med config init --force
-./bin/med config show
+# Once installed:
+med --help
+med config init --force
+med config show
+med greet --core-timeout 5m Alice
 ```
 
 ## Test
