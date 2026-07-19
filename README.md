@@ -1,60 +1,142 @@
-```mermaid
-flowchart TB
-    %% ==========================================
-    %% TOP LEVEL PHYSICAL BOUNDARIES
-    %% ==========================================
-    subgraph EDGE ["🌐 Public Internet & Edge Security Layer"]
-        direction LR
-        Web["💻 Web Client (SPA)"]
-        Mobile["📱 Mobile App"]
-        Cloudflare["🚀 Cloudflare CDN & WAF"]
+# med CLI
 
-        Web & Mobile ---> Cloudflare
-    end
+`med` is a lightweight, declarative, and type-safe CLI boilerplate framework built in TypeScript on Bun using `commander`.
 
-    subgraph AWS ["☁️ AWS Cloud Region"]
-        direction TB
+It is the TypeScript port of [`dat267/min`](https://github.com/dat267/min), preserving the same opinionated layering: an identical configuration model, identical specificity resolution, and an identical `config` subcommand group, but built on Bun's runtime and commander's parser instead of Go and Kong.
 
-        subgraph INGRESS_TIER ["🛡️ Public DMZ Subnets"]
-            ALB["⚖️ Application Load Balancer"]
-        end
+It is designed to be completely reusable, allowing developers to add new subcommands or configuration properties by editing only TypeScript files.
 
-        subgraph EKS_TIER ["☸️ Private Compute Subnets (EKS Cluster)"]
-            direction TB
+## Features
+- **Strict Override Specificity**: `CLI flag > Env Var > Config File > Subcommand Default > Root Default` resolved universally.
+- **Root Command Cleanliness**: Config options are only exposed on subcommands that explicitly define them, preventing global option pollution on the root `--help` output.
+- **Collision-Free Path Mapping**: Subcommand flags whose kebab-case name matches a flat global configuration key automatically inherit the full configuration hierarchy; non-matching flags stay local.
+- **Vanilla TypeScript Type Safety**: `Config` is a plain TypeScript interface; defaults are static values; values flow through a typed resolver.
+- **Cross-Platform Single Binary**: A GitHub Actions release workflow cross-compiles Bun standalone binaries for `linux/darwin/windows` across `amd64/arm64` plus `linux/arm`.
 
-            subgraph INGRESS_MESH ["Mesh Edge"]
-                Istio["🎛️ Istio Ingress Gateway"]
-            end
+---
 
-            subgraph APP_ROUTING ["Edge Routing"]
-                ApiGw["⚡ Kong / Envoy API Gateway"]
-            end
+## Developer Guide: Adding & Configuring Subcommands
 
-            subgraph COMPUTE_NODES ["App Pods"]
-                NextJS["📦 Next.js SSR Engine"]
-                CoreSvc["⚙️ Core Data Service"]
-            end
+This section explains how to add new subcommands, configure flags, and bind options to the global configuration.
 
-            Istio --> ApiGw
-            NextJS --> ApiGw
-            ApiGw --> CoreSvc
-        end
+### 1. How to Add a New Subcommand
 
-        subgraph DATA_TIER ["💾 Isolated Data Subnets"]
-            Redis["⚡ ElastiCache Redis"]
-            RDS["🗄️ Aurora PostgreSQL"]
-            S3["📦 AWS S3 (VPC Endpoint)"]
-        end
-    end
+Adding a subcommand involves three steps.
 
-    %% ==========================================
-    %% INTER-LAYER NETWORKING CROSSROADS
-    %% ==========================================
-    Cloudflare -- "HTTPS (TLS)" --> ALB
-    ALB --> Istio
+#### Step 1: Define the Command
+Create a function or class representing the command. Commander wires flags and arguments inline at registration time; the command's behavior lives in a pure function in `src/commands/`.
 
-    %% Data Store Engagements
-    CoreSvc --> Redis
-    CoreSvc --> RDS
-    NextJS & CoreSvc --> S3
+```ts
+// src/commands/diagnostic.ts
+export interface DiagnosticOptions {
+  verbose: boolean;
+}
+
+export function runDiagnostic(opts: DiagnosticOptions): void {
+  if (opts.verbose) {
+    console.log("Running verbose diagnostics...");
+  }
+  // ...
+}
 ```
+
+#### Step 2: Register the Subcommand
+Wire it into the root program in `src/cli.ts`. Options that share a kebab-case name with a global config key are passed into the framework's resolver via the action's `this.getOptionValueSource(...)` so that only CLI-explicit values override env/file/sub-defaults.
+
+```ts
+program
+  .command("diagnostic")
+  .description("Run system diagnostic suite")
+  .option("-v, --verbose", "Enable verbose diagnostic output.")
+  .action((opts: { verbose?: boolean }) => {
+    runDiagnostic({ verbose: Boolean(opts.verbose) });
+  });
+```
+
+#### Step 3: (Optional) Bind to Global Config
+If you want the subcommand to expose a global config key as a flag, name the option to match the global flat key in `kebab-case`. For example, to expose `core.timeout`, register the option as `--core-timeout <duration>`. The framework automatically walks the precedence chain for it.
+
+```ts
+const ctx = buildContext(program, appName, true, {
+  subDefaults: { "core-timeout": opts.coreTimeout ?? "10s" },
+  cliValues:   { "core-timeout": opts.coreTimeout ?? "10s" },
+  cliSource:   { "core-timeout": this.getOptionValueSource("coreTimeout") === "cli" },
+});
+console.log(`timeout is ${ctx.resolved["core-timeout"].value}`);
+```
+
+---
+
+### 2. Commander API Cheat Sheet
+
+Commander uses a fluent, imperative API rather than struct tags. The reference below maps common Kong tags to their commander equivalents in this codebase.
+
+| Kong Tag         | Commander Equivalent                                         | Example                                       |
+| :--------------- | :----------------------------------------------------------- | :-------------------------------------------- |
+| `cmd:""`         | `program.command("<name>")`                                  | `program.command("greet")`                    |
+| `arg:""`         | `command.argument("[name]", "desc", defaultValue)`           | `.argument("[name]", "...", "World")`         |
+| `help:"..."`     | `command.description("...")` or `.option(flag, desc)`        | `.description("Print a greeting message")`    |
+| `default:"..."`  | `.option(flag, desc, defaultValue)`                          | `.option("-t, --times <n>", "...", "1")`      |
+| `short:"s"`      | Short flag declared inline: `"-s, --shout"`                  | `.option("-s, --shout", "...")`               |
+| `placeholder:"X"`| The placeholder appears automatically from `<X>` in the flag | `.option("--config-file <PATH>", "...")`      |
+| `required:""`    | `.requiredOption(flag, desc)`                                | `.requiredOption("--token <t>", "...")`       |
+| `xor:"group"`    | Not built-in; enforce in your action handler                 | -                                             |
+| `name:"json-out"`| The kebab-case name is derived from the flag declaration     | `.option("--json-out <path>", "...")`         |
+
+---
+
+### 3. Configuration & Specificity Precedence
+
+The global configuration is declared in `src/config/schema.ts` as a typed `Config` interface plus a `flatKeys` registry that maps each kebab-case flat key to a `FieldSpec` (`{ type, default }`).
+
+Any subcommand option whose kebab-case name appears in `flatKeys` automatically participates in the configuration hierarchy.
+
+The priority order is strictly resolved as follows:
+
+```mermaid
+graph TD
+    A[1. CLI Flag Override] --> B[2. Env Var Override]
+    B --> C[3. JSON Config File]
+    C --> D[4. Subcommand Flag Default]
+    D --> E[5. Global Config Default]
+```
+
+#### Flag Name and Path Mapping
+The framework maps subcommand options to global configuration properties by exact kebab-case match:
+- If the global `Config.Core.Timeout` is registered under the flat key `"core-timeout"`, then a subcommand option declared as `--core-timeout <duration>` maps to it. The env var is `MED_CORE_TIMEOUT`.
+- Any subcommand option whose name does not match a global flat key (e.g. a local `--times <n>` flag on `greet`) remains entirely local to the subcommand and does not conflict with the global configuration.
+
+#### Crucial: Field Naming Rules
+Because the framework maps subcommand flags by name, **the flag you register on a subcommand must match the kebab-case flat key of the target global configuration property**:
+- To bind to global `Config.Core.Timeout` (flat key `"core-timeout"`), the subcommand option **must be `--core-timeout <duration>`**. Commander will expose it under the attribute name `coreTimeout`; the action handler uses this name with `getOptionValueSource("coreTimeout")` to detect whether the user set it explicitly.
+- If you register it as `--timeout <duration>`, the framework will not match the global key, and the flag will act only as a local command flag with no env-var or config-file inheritance.
+
+#### Duplicate Key Detection
+To ensure configuration integrity, the framework enforces unique leaf-level paths within the JSON configuration file:
+- If the configuration file defines the same setting in multiple forms (e.g. including flat `"core-timeout": "5m"` at the root level and nested `"core": {"timeout": "10m"}`), the parser will fail immediately with a validation error:
+  `error: duplicate config keys in /home/dat/.config/med/med.json: both "core-timeout" and "core.timeout" are defined. Run 'med config edit' to fix this.`
+
+---
+
+## Build & Run
+
+```sh
+bun install
+bun run build      # produces ./bin/med
+./bin/med --help
+./bin/med greet --core-timeout 5m Alice
+./bin/med config init --force
+./bin/med config show
+```
+
+## Test
+
+```sh
+bun test
+```
+
+The test suite (`tests/cli.test.ts`) auto-builds the binary and exercises 14 scenarios mirroring `min`'s specificity test suite, including explicit zero/empty preservation edge cases and duplicate-key validation.
+
+## Releasing
+
+Push to `main` (or trigger `workflow_dispatch`) to publish cross-platform binaries via the GitHub Actions release workflow in `.github/workflows/release.yml`. Each release is tagged `${BIN_NAME}/${SHORT_SHA}` and the last `KEEP_RELEASES` (default 3) are retained.
