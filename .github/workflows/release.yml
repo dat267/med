@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BIN_NAME:      ${{ vars.BIN_NAME || github.event.repository.name }}
+  KEEP_RELEASES: ${{ vars.KEEP_RELEASES || '3' }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos:   [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        include:
+          - { goos: linux, goarch: arm }
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build
+        env:
+          MED_VERSION: ${{ env.BIN_NAME }}/${{ github.sha }}
+        run: |
+          case "${{ matrix.goos }}-${{ matrix.goarch }}" in
+            linux-amd64)    TARGET=bun-linux-x64 ;;
+            linux-arm64)    TARGET=bun-linux-aarch64 ;;
+            linux-arm)      TARGET=bun-linux-arm ;;
+            darwin-amd64)   TARGET=bun-darwin-x64 ;;
+            darwin-arm64)   TARGET=bun-darwin-aarch64 ;;
+            windows-amd64)  TARGET=bun-windows-x64 ;;
+            windows-arm64)  TARGET=bun-windows-aarch64 ;;
+            *) echo "unsupported target"; exit 1 ;;
+          esac
+
+          SUFFIX=""
+          [ "${{ matrix.goos }}" = "windows" ] && SUFFIX=".exe"
+          OUT="${{ env.BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${SUFFIX}"
+
+          bun build ./main.ts \
+            --compile \
+            --target="$TARGET" \
+            --outfile="$OUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Compute release tag
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "tag=${{ env.BIN_NAME }}/${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "name=Release ${{ env.BIN_NAME }}/${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name:               ${{ steps.meta.outputs.tag }}
+          name:                   ${{ steps.meta.outputs.name }}
+          target_commitish:       ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            ${{ env.BIN_NAME }}-*
+
+      - name: Clean up old releases (keep ${{ env.KEEP_RELEASES }} most recent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:  ${{ github.repository }}
+        run: |
+          PREFIX="${{ env.BIN_NAME }}/"
+          releases=$(gh release list --limit 100 --json tagName \
+            | jq -r '.[].tagName' | grep "^${PREFIX}")
+
+          count=0
+          for tag in $releases; do
+            count=$((count + 1))
+            if [ "$count" -gt "${{ env.KEEP_RELEASES }}" ]; then
+              echo "Deleting: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            else
+              echo "Keeping:  $tag"
+            fi
+          done

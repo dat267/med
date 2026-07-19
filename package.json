@@ -1,0 +1,22 @@
+{
+  "name": "med",
+  "version": "1.0.0",
+  "module": "main.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build ./main.ts --compile --outfile=./bin/med",
+    "test": "bun test"
+  },
+  "bin": {
+    "med": "./main.ts"
+  },
+  "dependencies": {
+    "chalk": "latest",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}
