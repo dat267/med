@@ -43,7 +43,7 @@ curl -L -o med https://github.com/dat267/med/releases/latest/download/med-linux-
 chmod +x med
 mkdir -p "$HOME/.local/bin"
 mv med "$HOME/.local/bin/med"
-hash -r  # forget the old cached command lookup
+rehash     # forget the old cached command lookup (bash and zsh)
 med --version
 ```
 
@@ -60,7 +60,7 @@ curl -L -o med https://github.com/dat267/med/releases/latest/download/med-darwin
 chmod +x med
 mkdir -p "$HOME/.local/bin"
 mv med "$HOME/.local/bin/med"
-hash -r  # forget the old cached command lookup
+rehash     # forget the old cached command lookup (bash and zsh)
 med --version
 ```
 
