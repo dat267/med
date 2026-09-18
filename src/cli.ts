@@ -12,7 +12,7 @@ import {
   type ResolveInputs,
   type Resolved,
 } from "./config/resolve.ts";
-import { flatKeys, type Config } from "./config/schema.ts";
+import { configDefaults, flatKeys, type Config } from "./config/schema.ts";
 import {
   detectDuplicateKeys,
   loadConfigFile,
@@ -33,6 +33,50 @@ export interface ProgramContext {
   resolved: Record<keyof typeof flatKeys, Resolved>;
 }
 
+interface LoadContextOptions {
+  configFile?: string;
+  resolveValues?: boolean;
+  checkDuplicates?: boolean;
+  cliValues?: ResolveInputs["cliValues"];
+  cliSource?: ResolveInputs["cliSource"];
+  subDefaults?: ResolveInputs["subDefaults"];
+  env?: Record<string, string | undefined>;
+}
+
+export type LoadResult =
+  | { ok: true; ctx: ProgramContext }
+  | { ok: false; error: string };
+
+export function loadContext(appName: string, opts: LoadContextOptions): LoadResult {
+  const env = opts.env ?? process.env;
+  const configFile = resolveConfigFilePath(appName, opts.configFile, env);
+  const loaded = loadConfigFile(configFile);
+
+  if (opts.checkDuplicates) {
+    const dup = detectDuplicateKeys(loaded.raw, appName);
+    if (dup) {
+      return { ok: false, error: `duplicate config keys in ${configFile}: ${dup}` };
+    }
+  }
+
+  const resolved = opts.resolveValues
+    ? resolveAll({
+        appPrefix: appName.toUpperCase(),
+        fileValues: loaded.flatValues,
+        cliValues: opts.cliValues ?? {},
+        cliSource: opts.cliSource ?? {},
+        env: env as Record<string, string | undefined>,
+        subDefaults: opts.subDefaults ?? {},
+      })
+    : ({} as Record<keyof typeof flatKeys, Resolved>);
+
+  const config: Config = opts.resolveValues
+    ? applyToConfig(resolved)
+    : { ...configDefaults };
+
+  return { ok: true, ctx: { appName, configFile, config, resolved } };
+}
+
 export function buildProgram(opts: BuildOptions = {}): { program: Command; appName: string } {
   const appName = opts.appName ?? DefaultAppName;
   const program = new Command();
@@ -44,6 +88,9 @@ export function buildProgram(opts: BuildOptions = {}): { program: Command; appNa
 
   program.option("--config-file <PATH>", "Path to config file").exitOverride();
 
+  const rootConfigFile = (): string | undefined =>
+    program.opts<{ configFile?: string }>().configFile;
+
   const configCmd = program
     .command("config")
     .description("Manage application configuration");
@@ -53,32 +100,28 @@ export function buildProgram(opts: BuildOptions = {}): { program: Command; appNa
     .description("Generate a default configuration profile template file")
     .option("-f, --force", "Overwrite existing configuration file")
     .action((opts: { force?: boolean }) => {
-      const ctx = buildContext(program, appName, false, { skipDuplicateCheck: true });
-      new ConfigInitCmd().run(ctx, Boolean(opts.force));
+      new ConfigInitCmd().run(ctxOrExit(appName, { configFile: rootConfigFile() }), Boolean(opts.force));
     });
 
   configCmd
     .command("path")
     .description("Show the active configuration file path")
     .action(() => {
-      const ctx = buildContext(program, appName, false, { skipDuplicateCheck: true });
-      new ConfigPathCmd().run(ctx);
+      new ConfigPathCmd().run(ctxOrExit(appName, { configFile: rootConfigFile() }));
     });
 
   configCmd
     .command("show")
     .description("Print the active configuration values")
     .action(() => {
-      const ctx = buildContext(program, appName, true, { skipDuplicateCheck: true });
-      new ConfigShowCmd().run(ctx);
+      new ConfigShowCmd().run(ctxOrExit(appName, { configFile: rootConfigFile(), resolveValues: true }));
     });
 
   configCmd
     .command("edit")
     .description("Open the active configuration file in an editor")
     .action(() => {
-      const ctx = buildContext(program, appName, false, { skipDuplicateCheck: true });
-      new ConfigEditCmd().run(ctx);
+      new ConfigEditCmd().run(ctxOrExit(appName, { configFile: rootConfigFile() }));
     });
 
   program
@@ -96,11 +139,18 @@ export function buildProgram(opts: BuildOptions = {}): { program: Command; appNa
         cliOverrides["core-timeout"] = opts.coreTimeout ?? "10s";
         cliSource["core-timeout"] = true;
       }
-      const ctx = buildContext(program, appName, true, {
+      const result = loadContext(appName, {
+        configFile: rootConfigFile(),
+        resolveValues: true,
+        checkDuplicates: true,
         subDefaults: { "core-timeout": opts.coreTimeout ?? "10s" },
         cliValues: cliOverrides,
         cliSource,
       });
+      if (!result.ok) {
+        console.error(`error: ${result.error}`);
+        process.exit(1);
+      }
       runGreet(
         {
           name,
@@ -108,57 +158,20 @@ export function buildProgram(opts: BuildOptions = {}): { program: Command; appNa
           times: Number(opts.times) || 1,
           coreTimeout: opts.coreTimeout ?? "10s",
         },
-        String(ctx.resolved["core-timeout"].value),
+        String(result.ctx.resolved["core-timeout"].value),
       );
     });
 
   return { program, appName };
 }
 
-interface ExtraInputs {
-  subDefaults?: ResolveInputs["subDefaults"];
-  cliValues?: ResolveInputs["cliValues"];
-  cliSource?: ResolveInputs["cliSource"];
-  skipDuplicateCheck?: boolean;
-}
-
-function buildContext(
-  program: Command,
-  appName: string,
-  resolveValues: boolean,
-  extra: ExtraInputs = {},
-): ProgramContext {
-  const rootOpts = program.opts<{ configFile?: string }>();
-  const configFile = resolveConfigFilePath(appName, rootOpts.configFile);
-  const loaded = loadConfigFile(configFile);
-
-  if (!extra.skipDuplicateCheck) {
-    const dup = detectDuplicateKeys(loaded.raw, appName);
-    if (dup) {
-      console.error(`error: duplicate config keys in ${configFile}: ${dup}`);
-      process.exit(1);
-    }
+function ctxOrExit(appName: string, opts: LoadContextOptions = {}): ProgramContext {
+  const result = loadContext(appName, opts);
+  if (!result.ok) {
+    console.error(`error: ${result.error}`);
+    process.exit(1);
   }
-
-  const resolved = resolveValues
-    ? resolveAll({
-        appPrefix: appName.toUpperCase(),
-        fileValues: loaded.flatValues,
-        cliValues: extra.cliValues ?? {},
-        cliSource: extra.cliSource ?? {},
-        env: process.env as Record<string, string | undefined>,
-        subDefaults: extra.subDefaults ?? {},
-      })
-    : ({} as Record<keyof typeof flatKeys, Resolved>);
-
-  const config: Config = resolveValues
-    ? applyToConfig(resolved)
-    : {
-        adminToken: "",
-        core: { timeout: "2m", retries: 3 },
-        debug: false,
-        dryRun: false,
-      };
-
-  return { appName, configFile, config, resolved };
+  return result.ctx;
 }
+
+

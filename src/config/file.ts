@@ -4,10 +4,14 @@ import { join, dirname } from "node:path";
 import { defaultConfigFile, flatKeys } from "./schema.ts";
 import { type Primitive } from "./schema.ts";
 
-export function resolveConfigFilePath(appName: string, explicit?: string): string {
+export function resolveConfigFilePath(
+  appName: string,
+  explicit?: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
   if (explicit) return explicit;
   const envKey = `${appName.toUpperCase()}_CONFIG_FILE`;
-  if (process.env[envKey]) return process.env[envKey]!;
+  if (env[envKey]) return env[envKey]!;
   const local = `${appName}.json`;
   if (existsSync(local)) return local;
   return join(homedir(), ".config", appName, `${appName}.json`);
