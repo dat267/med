@@ -1,4 +1,4 @@
-import { type FieldSpec, type Primitive, configDefaults, envVarFor, flatKeys } from "./schema.ts";
+import { type FieldSpec, type Primitive, envVarFor, flatKeys } from "./schema.ts";
 
 export type Source = "cli" | "env" | "file" | "subDefault" | "rootDefault";
 
@@ -6,14 +6,6 @@ export interface Resolved {
   value: Primitive;
   source: Source;
 }
-
-const configDefaultsByFlatKey: Record<keyof typeof flatKeys, Primitive> = {
-  "admin-token": configDefaults.adminToken,
-  "core-timeout": configDefaults.core.timeout,
-  "core-retries": configDefaults.core.retries,
-  "debug": configDefaults.debug,
-  "dry-run": configDefaults.dryRun,
-};
 
 export function parsePrimitive(spec: FieldSpec, raw: string): Primitive {
   switch (spec.type) {
@@ -92,7 +84,7 @@ export function resolveKey(flatKey: keyof typeof flatKeys, inputs: ResolveInputs
     return { value: subDefault, source: "subDefault" };
   }
 
-  return { value: configDefaultsByFlatKey[flatKey]!, source: "rootDefault" };
+  return { value: flatKeys[flatKey].default, source: "rootDefault" };
 }
 
 export function resolveAll(inputs: ResolveInputs): Record<keyof typeof flatKeys, Resolved> {

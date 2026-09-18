@@ -19,30 +19,38 @@ export interface FieldSpec {
   default: Primitive;
 }
 
-export const configDefaults: Config = {
-  adminToken: "",
-  core: { timeout: "2m", retries: 3 },
-  debug: false,
-  dryRun: false,
-};
+/** Where this flat key lives in the nested `Config` object. */
+export interface FlatSpec extends FieldSpec {
+  path: readonly string[];
+}
 
 export const flatKeys = {
-  "admin-token": { type: "string", default: "" },
-  "core-timeout": { type: "string", default: "2m" },
-  "core-retries": { type: "number", default: 3 },
-  "debug": { type: "boolean", default: false },
-  "dry-run": { type: "boolean", default: false },
-} as const satisfies Record<string, FieldSpec>;
+  "admin-token": { type: "string", default: "", path: ["adminToken"] },
+  "core-timeout": { type: "string", default: "2m", path: ["core", "timeout"] },
+  "core-retries": { type: "number", default: 3, path: ["core", "retries"] },
+  "debug": { type: "boolean", default: false, path: ["debug"] },
+  "dry-run": { type: "boolean", default: false, path: ["dryRun"] },
+} as const satisfies Record<string, FlatSpec>;
 
-export const defaultConfigFile: object = {
-  "admin-token": "",
-  core: {
-    timeout: "2m",
-    retries: 3,
-  },
-  debug: false,
-  "dry-run": false,
-};
+const kebab = (seg: string): string => seg.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
+function nestDefaults(formatSegment: (seg: string) => string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const spec of Object.values(flatKeys)) {
+    let node = out;
+    for (let i = 0; i < spec.path.length - 1; i++) {
+      const k = formatSegment(spec.path[i]!);
+      if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
+      node = node[k] as Record<string, unknown>;
+    }
+    node[formatSegment(spec.path[spec.path.length - 1]!)] = spec.default;
+  }
+  return out;
+}
+
+export const configDefaults = nestDefaults((seg) => seg) as unknown as Config;
+
+export const defaultConfigFile: object = nestDefaults(kebab);
 
 export function envVarFor(flatKey: string, appPrefix: string): string {
   return `${appPrefix}_${flatKey.replace(/-/g, "_").toUpperCase()}`;
